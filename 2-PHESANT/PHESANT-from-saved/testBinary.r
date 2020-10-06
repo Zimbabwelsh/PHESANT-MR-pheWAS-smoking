@@ -7,7 +7,7 @@ testBinary <- function(resDir, partNum, numParts, confounders, traitofinterest, 
   sink()
   
   ## generate empty results file
-  write("varName,varType,n,beta,lower,upper,pvalue", file=paste(opt$resDir,"results-logistic-binary-", opt$partIdx, "-", opt$numParts, ".txt",sep=""), append=FALSE)
+  write("varName,varType,n,beta,lower,upper,pvalue", file=paste(opt$resDir,"results-", exposureType, "-", opt$partIdx, "-", opt$numParts, ".txt",sep=""), append=FALSE)
   
   
   ## load phenotype data
@@ -54,6 +54,7 @@ testBinary <- function(resDir, partNum, numParts, confounders, traitofinterest, 
 	  ## if else catch loop for categorical data to specify reference categories and QC for n(exposure/not)
 	  
 	  if (exposureType != "cont"){
+	    pheno =as.factor(pheno)
 	    phenoF = chooseReferenceCategory(pheno)
 	    facLevels = levels(phenoF)
 	    
@@ -143,7 +144,7 @@ testBinary <- function(resDir, partNum, numParts, confounders, traitofinterest, 
 	  
 	  ## for continuous generate N==numNotNA, exposure effects are single estimate
 	  
-	  if (exposureType == cont){
+	  if (exposureType == "cont"){
 	    pvalue = sumx['exp','Pr(>|z|)']
 	    beta = sumx["exp","Estimate"]
 	    cis = confint(mylogit, "exp", level=0.95)
@@ -160,7 +161,7 @@ testBinary <- function(resDir, partNum, numParts, confounders, traitofinterest, 
 	  
 	  ## for binary generate N = n(true)/n(false) (numNotNA), exposure still single estimates
 	  
-	  else if (exposureType == binary) {
+	  else if (exposureType == "binary") {
 	    pvalue = sumx['exp','Pr(>|z|)']
 	    beta = sumx["exp","Estimate"]
 	    cis = confint(mylogit, "exp", level=0.95)

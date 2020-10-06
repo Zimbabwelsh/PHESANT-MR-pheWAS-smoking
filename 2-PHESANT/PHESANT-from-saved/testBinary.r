@@ -1,115 +1,235 @@
 
-testBinary <- function(resDir, partNum, numParts, confounders, traitofinterest, traitofinterestname, userId, phenoDir) {
+testBinary <- function(resDir, partNum, numParts, confounders, traitofinterest, traitofinterestname, userId, phenoDir, exposureType) {
 
-
-	resLogFile = paste(resDir, "results-log-", partNum, "-", numParts, ".txt",sep="")
-
-        ## load phenotype data
-
-        phenos = read.table(paste(phenoDir, '/data-binary-', partNum, '-', numParts, '.txt',sep=''), sep=',', header=1, comment.char="")
-
+  ## create LogFile
+  resLogFile = paste(resDir, "results-log-", exposureType, "-", partNum, "-", numParts, ".txt",sep="")
+  sink(resLogFile)
+  sink()
+  
+  ## generate empty results file
+  write("varName,varType,n,beta,lower,upper,pvalue", file=paste(opt$resDir,"results-logistic-binary-", opt$partIdx, "-", opt$numParts, ".txt",sep=""), append=FALSE)
+  
+  
+  ## load phenotype data
+	phenos = read.table(paste(phenoDir, '/data-', exposureType,"-", partNum, '-', numParts, '.txt',sep=''), sep=',', header=1, comment.char="")
+	
 	if (ncol(phenos)==1) {
-                return(NULL)
-        }
-
-	confNames = colnames(confounders)
-        confNames = confNames[-which(confNames==userId)]
-        phenoNames = colnames(phenos)
-        phenoNames = phenoNames[-which(phenoNames=='userID')]
-
-        ## merge datasets
-        data = merge(traitofinterest, confounders, by=userId)
-        data = merge(data, phenos, by.x=userId, by.y='userID')
-
+	  return(NULL)
+	}
+	
+	## allow for estimation with no confounders
+	if (ncol(confounders)>=2){
+	  confNames = colnames(confounders)
+	  confNames = confNames[-which(confNames==userId)]
+	
+	  ## merge datasets
+	  data = merge(traitofinterest, confounders, by=userId)
+	  data = merge(data, phenos, by.x=userId, by.y='userID')
+	  confs = data[,confNames]
+	} else{
+	  data=merge(traitofinterest, phenos, by.x=userId, by.y='userID')
+	  confs=confounders
+	}
+	
+	
+	## generate master list of phenos to loop over
+	
+	phenoNames = colnames(phenos)
+	phenoNames = phenoNames[-which(phenoNames=='userID')]
+	
 	for (i in 1:length(phenoNames)) {
+	  
+	  varName = phenoNames[1]
+	  
+	  print(varName)
+	  
+	  sink(resLogFile, append=TRUE)
+	  cat(paste(varName, ' || ', exposureType,' || ', sep=''))
+	  sink()
+	  
+	  varType=''
+	  
+	  pheno = data[,varName]
+	  
+	  ## if else catch loop for categorical data to specify reference categories and QC for n(exposure/not)
+	  
+	  if (exposureType != "cont"){
+	    phenoF = chooseReferenceCategory(pheno)
+	    facLevels = levels(phenoF)
+	    
+	    cats = table(phenoF)
+	    idxMax = cats[which.max(cats)]
+	    idxMin = cats[which.min(cats)]
+	    numNotNA = length(which(!is.na(phenoF)))
+	    
+	    if (idxMax<100) {
+	     print('<100')
+	     sink(resLogFile, append=TRUE)
+	     cat(paste('<100 (',idxMax,'/',idxMin,' || SKIP ',sep=''))
+	     sink()
+	    }
+	    else if (numNotNA<500) {
+	      print('<500 in total')
+	      sink(resLogFile, append=TRUE)
+	      cat('<500 in total (', numNotNA, ') || SKIP ',sep='')
+	      sink()
+	    }
 
-		varName = phenoNames[i]
-		print(varName)
-
-		sink(resLogFile, append=TRUE)
-                cat(paste(varName, ' || binary || ', sep=''))
-                sink()
-
-		varType=''
-
-		pheno = data[,varName]
-		phenoFactor = factor(pheno)
-		facLevels = levels(phenoFactor)
-		idxTrue = length(which(phenoFactor==facLevels[1]))
-		idxFalse = length(which(phenoFactor==facLevels[2]))
-		numNotNA = length(which(!is.na(phenoFactor)))
- 
-	        if (idxTrue<10 || idxFalse<10) {
-			print('<10')
-			sink(resLogFile, append=TRUE)
-                        cat(paste('<10 (',idxTrue,'/',idxFalse,' || SKIP ',sep=''))
-                        sink()
-		}
-		else if (numNotNA<500) {	
-			print('<500 in total')
-			sink(resLogFile, append=TRUE)
-			cat('<500 in total (', numNotNA, ') || SKIP ',sep='')
-                        sink()
-		}
-		else {
-
-		sink(resLogFile, append=TRUE)
-                cat('testing || ')
-                sink()
-
-		exp = data[,traitofinterestname]
-		confs = data[,confNames]
-
-		phenoFactor = factor(pheno)
-
-		myBinaryRegression(exp, confs, phenoFactor, partNum, numParts, resDir, varName)
-
-		## save result to file
-		sink(resLogFile, append=TRUE)
-                cat("SUCCESS results-binary")
-                sink()
-
-		}
-
-		sink(resLogFile, append=TRUE)
-                cat("\n")
-                sink()
-
+	    else {
+	      sink(resLogFile, append=TRUE)
+	      cat('testing || ')
+	      sink()
+	    }
+	    
+	    ## produce output with flipped phenoFactor and exp for myBinaryRegression
+	    
+	    phenoFactor = factor(data[,traitofinterestname])
+	    
+	    ## specify exp is factor variable with most common category as reference
+	    
+	    exp = phenoF
+	    
+	    myBinaryRegression(exp, confs, phenoFactor, partNum, numParts, resDir, varName, exposureType)
+	    
+	    # save result to file
+	    sink(resLogFile, append=TRUE)
+	    cat(paste("SUCCESS results-", exposureType))
+	    sink()
+	    
+	  }
+	  else {
+	    
+	    ## if non-categorical, exposure is just "pheno"
+	    
+	    phenoFactor = factor(data[,traitofinterestname])
+	    
+	    exp = pheno
+	    
+	    myBinaryRegression(exp, confs, phenoFactor, partNum, numParts, resDir, varName, exposureType)
+	    
+	    # save result to file
+	    sink(resLogFile, append=TRUE)
+	    cat(paste("SUCCESS results-", exposureType))
+	    sink()
+	  }
+	  
+	  sink(resLogFile, append=TRUE)
+	  cat("\n")
+	  sink()
+	  
 	}
 }
-
-
-
-myBinaryRegression <- function(exp, confs, phenoFactor, partNum, numParts, resDir, varName) {
-
-	print(unique(phenoFactor))
-
-	varType=''
-
-		## binary logistic regression
-
-                mylogit <- glm(phenoFactor ~ exp + ., data=confs, family="binomial")
-
-                sumx = summary(mylogit)
-                pvalue = sumx$coefficients['exp','Pr(>|z|)']
-                beta = sumx$coefficients["exp","Estimate"]
-                cis = confint(mylogit, "exp", level=0.95)
-                lower = cis["2.5 %"]
-                upper = cis["97.5 %"]
-
-		facLevels = levels(phenoFactor)
-                idxTrue = length(which(phenoFactor==facLevels[1]))
-                idxFalse = length(which(phenoFactor==facLevels[2]))
-                numNotNA = length(which(!is.na(phenoFactor)))
-
-		sink(resLogFile, append=TRUE)
-                cat(paste(varName, varType, paste(idxTrue,"/",idxFalse,"(",numNotNA,")",sep=""), beta, lower, upper, pvalue, sep=","))
-		cat(' || ')
-		cat(paste(resDir,"results-logistic-binary-",partNum, "-", numParts,".txt", sep=""))
-                sink()
-
-                ## save result to file
-                write(paste(varName, varType, paste(idxTrue,"/",idxFalse,"(",numNotNA,")",sep=""), beta, lower, upper, pvalue, sep=","), file=paste(resDir,"results-logistic-binary-",partNum, "-", numParts,".txt", sep=""), append=TRUE)
-
-
+	
+	## regression function for flipped exp/phenoFactor
+	
+	myBinaryRegression <- function(exp, confs, phenoFactor, partNum, numParts, resDir, varName, exposureType) {
+	  
+	  print(unique(phenoFactor))
+	  
+	  varType=exposureType
+	  
+	  ## binary logistic regression
+	    ## generalise to no confounders case
+	  if (ncol(confs)<2){
+	    mylogit <- glm(phenoFactor ~ exp, family="binomial")
+	  }
+	  
+	  else {
+	    mylogit <- glm(phenoFactor ~ exp + ., data=confs, family="binomial")
+	  }  
+	  sumx = coef(summary(mylogit))
+	  
+	  ## create if else loop for continuous, binary and un/ordered categotical
+	  
+	  ## for continuous generate N==numNotNA, exposure effects are single estimate
+	  
+	  if (exposureType == cont){
+	    pvalue = sumx['exp','Pr(>|z|)']
+	    beta = sumx["exp","Estimate"]
+	    cis = confint(mylogit, "exp", level=0.95)
+	    lower = cis["2.5 %"]
+	    upper = cis["97.5 %"]
+	    numNotNA = length(which(!is.na(pheno)))
+	    sink(resLogFile, append=TRUE)
+	    cat(paste(varName, varType,  beta, lower, upper, pvalue, sep=","))
+	    cat(' || ')
+	    cat(paste(resDir,"results-logistic-binary-", partNum, "-", numParts,".txt", sep=""))
+	    sink()
+	    write(paste(varName, varType, numNotNA, beta, lower, upper, pvalue, sep=","), file=paste(resDir,"results-logistic-binary", partNum, "-", exposureType, numParts,".txt", sep=""), append=TRUE)
+	  }
+	  
+	  ## for binary generate N = n(true)/n(false) (numNotNA), exposure still single estimates
+	  
+	  else if (exposureType == binary) {
+	    pvalue = sumx['exp','Pr(>|z|)']
+	    beta = sumx["exp","Estimate"]
+	    cis = confint(mylogit, "exp", level=0.95)
+	    lower = cis["2.5 %"]
+	    upper = cis["97.5 %"]
+	    facLevels = levels(exp)
+	    idxTrue = length(which(exp==facLevels[1]))
+	    idxFalse = length(which(exp==facLevels[2]))
+	    numNotNA = length(which(!is.na(exp)))
+	    
+	    sink(resLogFile, append=TRUE)
+	    cat(paste(varName, varType, paste(idxTrue,"/",idxFalse,"(",numNotNA,")",sep=""), beta, lower, upper, pvalue, sep=","))
+	    cat(' || ')
+	    cat(paste(resDir,"results-logistic-binary-", partNum, "-", numParts,".txt", sep=""))
+	    sink()
+	    write(paste(varName, varType, paste(idxTrue,"/",idxFalse,"(",numNotNA,")",sep=""), beta, lower, upper, pvalue, sep=","), file=paste(resDir,"results-", exposureType,"-" ,partNum, "-", numParts,".txt", sep=""), append=TRUE)
+	  }
+	  
+	  ## for un/ordered categorical exposure - store multiple exposure effects, N = most common and numNotNA, loop over (facLevels-1)
+	  
+	  else {
+	    reference = levels(exp)[1]
+	    facLevels = levels(exp)
+	    cis       = confint(mylogit, level=0.95)
+	    cats      = table(phenoF)
+	    idxMax    = cats[which.max(cats)]
+	    numNotNA  = length(which(!is.na(phenoF)))
+	    
+	    for (i in (1:max(facLevels))){
+	      pvalue  = sumx[i+1,4]
+	      beta    = sumx[i+1,1]
+	      lower   = cis[i+1,1]
+	      upper   = cis[i+1,2]
+	      
+	      sink(resLogFile, append=TRUE)
+	      cat(paste(varName,i, "-", reference, varType, paste(idxTrue,"/",idxFalse,"(",numNotNA,")",sep=""), beta, lower, upper, pvalue, sep=","))
+	      cat(' || ')
+	      cat(paste(resDir,"results-logistic-binary-", exposureType, "-", partNum, "-", numParts,".txt", sep=""))
+	      sink()
+	      write(paste(paste(varName, i,"-",reference, sep=""), varType, paste(maxFreq,"/",numNotNA,sep=""), beta, lower, upper, pvalue, sep=","), file=paste(resDir,"results-", exposureType, "-", partNum, "-", numParts,".txt", sep=""), append=TRUE)
+	    }
+	    # IF SOLVED I THINK THE WHOLE THING RUNS?
+	    # APPEND MULTIPLE ROWS OF RESULTS TO THE LOG FILE
+	  }
 }
+	
+	## chooseReferenceCategory taken from PHESANT "testCategoricalUnordered.r" 
+	
+	chooseReferenceCategory <- function(pheno) {
+	  
+	  uniqVar = unique(na.omit(pheno));
+	  catFact = factor(pheno)
+	  
+	  maxFreq=0;
+	  maxFreqVar = "";
+	  for (u in uniqVar) {
+	    withValIdx = which(pheno==u)
+	    numWithVal = length(withValIdx);
+	    if (numWithVal>maxFreq) {
+	      maxFreq = numWithVal;
+	      maxFreqVar = u;
+	    }
+	  }
+	  
+	  cat("reference: ", maxFreqVar,"=",maxFreq, " || ", sep="");
+	  
+	  ## choose reference (category with largest frequency)
+	  phenoFactor <- relevel(pheno, ref = paste("",maxFreqVar,sep=""))
+	  
+	  return(phenoFactor);
+	}
+	

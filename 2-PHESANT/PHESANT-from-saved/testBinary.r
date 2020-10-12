@@ -200,7 +200,7 @@ testBinary <- function(resDir, partNum, numParts, confounders, traitofinterest, 
 	      # cat(' || ')
 	      # cat(paste(resDir,"results-", exposureType, "-", partNum, "-", numParts,".txt", sep=""))
 	      # sink()
-	      write(paste(paste(varName, i,"-",reference, sep=""), varType, paste(idxMax,"/",numNotNA,sep=""), beta, lower, upper, pvalue, sep=","), file=paste(resDir,"results-", exposureType, "-", partNum, "-", numParts,".txt", sep=""), append=TRUE)
+	      write(paste(paste(varName, "-",i, sep=""), varType, paste(idxMax,"/",numNotNA,sep=""), beta, lower, upper, pvalue, sep=","), file=paste(resDir,"results-", exposureType, "-", partNum, "-", numParts,".txt", sep=""), append=TRUE)
 	    }
 	   }
 }

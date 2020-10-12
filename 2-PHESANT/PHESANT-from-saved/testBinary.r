@@ -189,7 +189,7 @@ testBinary <- function(resDir, partNum, numParts, confounders, traitofinterest, 
 	    idxMax    = cats[which.max(cats)]
 	    numNotNA  = length(which(!is.na(exp)))
 	    
-	    for (i in (1:max(facLevels))){
+	    for (i in 1:(as.numeric(max(facLevels))-1)){
 	      pvalue  = sumx[i+1,4]
 	      beta    = sumx[i+1,1]
 	      lower   = cis[i+1,1]
